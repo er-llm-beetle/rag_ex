@@ -1325,8 +1325,199 @@ class GPTEmbeddingModel:
 
 
 
-class ChromaDBVectorStore:
-    """Handles vector storage and retrieval using ChromaDB"""
+# class ChromaDBVectorStore:
+#     """Handles vector storage and retrieval using ChromaDB"""
+    
+#     def __init__(
+#         self,
+#         collection_name: str = "document_store",
+#         embedding_dim: int = 1024,
+#         persist_directory: str = None
+#     ):
+#         try:
+#             self.collection_name = collection_name
+#             self.embedding_dim = embedding_dim
+#             self.logger = logging.getLogger(__name__)
+            
+#             # Use Streamlit's temp directory if no persist directory specified
+#             if persist_directory is None:
+#                 persist_directory = os.path.join(tempfile.gettempdir(), "chromadb_data")
+            
+#             # Ensure directory exists
+#             os.makedirs(persist_directory, exist_ok=True)
+            
+            
+#             # Initialize ChromaDB client with new configuration
+#             self.client = chromadb.PersistentClient(
+#                 path=persist_directory,
+#                 settings=Settings(
+#                     allow_reset=True,
+#                     anonymized_telemetry=False
+#                 )
+#             )
+            
+#             # Get or create collection
+#             self.collection = self._create_collection()
+#         except Exception as e:
+#             self.logger.error(f"Failed to initialize ChromaDB: {str(e)}")
+#             raise
+
+#     def _create_collection(self):
+#         """Create ChromaDB collection if it doesn't exist"""
+#         try:
+#             # Delete collection if it exists
+#             try:
+#                 return self.client.get_collection(
+#                     name=self.collection_name,
+#                     embedding_function=None
+#                 )
+#             except Exception:
+#                 # If collection doesn't exist, create new one
+#                 return self.client.create_collection(
+#                     name=self.collection_name,
+#                     metadata={"hnsw:space": "cosine"},
+#                     embedding_function=None
+#                 )
+            
+#         except Exception as e:
+#             self.logger.error(f"Failed to create collection: {str(e)}")
+#             raise
+
+#     def _sanitize_metadata_value(self, value: Any) -> Any:
+#         """Convert metadata values to ChromaDB-compatible types"""
+#         if value is None:
+#             return ""
+#         elif isinstance(value, (str, int, float, bool)):
+#             return value
+#         elif isinstance(value, (list, tuple)):
+#             return str(list(value))
+#         elif isinstance(value, dict):
+#             return str(value)
+#         elif hasattr(value, '__dict__'):
+#             # Handle objects with __dict__ attribute
+#             return str(value.__dict__)
+#         else:
+#             return str(value)
+
+#     def _convert_metadata_to_dict(self, metadata: Any) -> Dict:
+#         """Convert metadata to ChromaDB-compatible dictionary format"""
+#         try:
+#             # If metadata is already a dict, use it as base
+#             if isinstance(metadata, dict):
+#                 base_dict = metadata
+#             # If metadata has __dict__, use that
+#             elif hasattr(metadata, '__dict__'):
+#                 base_dict = metadata.__dict__
+#             # If metadata is a ChunkMetadata object, extract its attributes
+#             elif isinstance(metadata, ChunkMetadata):
+#                 base_dict = {
+#                     'source': metadata.source,
+#                     'chunk_index': metadata.chunk_index,
+#                     'total_chunks': metadata.total_chunks,
+#                     'start_char': metadata.start_char,
+#                     'end_char': metadata.end_char,
+#                     'word_count': metadata.word_count,
+#                     'page_number': metadata.page_number,
+#                     'section_title': metadata.section_title,
+#                     'semantic_density': metadata.semantic_density
+#                 }
+#             else:
+#                 base_dict = {"value": str(metadata)}
+
+#             # Sanitize all values in the dictionary
+#             return {
+#                 k: self._sanitize_metadata_value(v)
+#                 for k, v in base_dict.items()
+#             }
+            
+#         except Exception as e:
+#             self.logger.warning(f"Error converting metadata to dict: {str(e)}")
+#             return {"error": "Failed to convert metadata"}
+
+#     def insert(
+#         self,
+#         texts: List[str],
+#         embeddings: np.ndarray,
+#         metadata: List[Any],
+#         batch_size: int = 100
+#     ):
+#         """Insert documents into ChromaDB"""
+#         try:
+#             # Process in batches
+#             for i in range(0, len(texts), batch_size):
+#                 end_idx = min(i + batch_size, len(texts))
+#                 batch_texts = texts[i:end_idx]
+#                 batch_embeddings = embeddings[i:end_idx]
+                
+#                 # Convert and sanitize metadata
+#                 batch_metadata = [
+#                     self._convert_metadata_to_dict(meta) 
+#                     for meta in metadata[i:end_idx]
+#                 ]
+                
+#                 # Generate IDs for the batch
+#                 batch_ids = [f"doc_{j}" for j in range(i, end_idx)]
+                
+#                 # Add embeddings to collection
+#                 self.collection.add(
+#                     embeddings=batch_embeddings.tolist(),
+#                     documents=batch_texts,
+#                     metadatas=batch_metadata,
+#                     ids=batch_ids
+#                 )
+            
+#             self.logger.info(f"Successfully inserted {len(texts)} documents")
+            
+#         except Exception as e:
+#             self.logger.error(f"Insert operation failed: {str(e)}")
+#             raise
+
+#     def hybrid_search(
+#         self,
+#         query_embedding: np.ndarray,
+#         query_text: str,
+#         limit: int = 5
+#     ) -> List[Dict]:
+#         """Perform hybrid search using both vector similarity and text matching"""
+#         try:
+#             # Query collection
+#             results = self.collection.query(
+#                 query_embeddings=query_embedding.reshape(1, -1).tolist(),
+#                 n_results=limit,
+#                 include=["documents", "metadatas", "distances"]
+#             )
+            
+#             # Format results
+#             formatted_results = []
+#             if results['ids'] and len(results['ids'][0]) > 0:
+#                 for i in range(len(results['ids'][0])):
+#                     doc_id = results['ids'][0][i]
+#                     score = 1 - float(results['distances'][0][i])  # Convert distance to similarity score
+                    
+#                     formatted_results.append({
+#                         "id": doc_id,
+#                         "text": results['documents'][0][i],
+#                         "score": score,
+#                         "metadata": results['metadatas'][0][i]
+#                     })
+            
+#             return formatted_results
+            
+#         except Exception as e:
+#             self.logger.error(f"Search operation failed: {str(e)}")
+#             raise
+
+#     def __del__(self):
+#         """Cleanup resources"""
+#         try:
+#             if hasattr(self, 'client'):
+#                 # ChromaDB PersistentClient doesn't need explicit closing
+#                 pass
+#         except Exception as e:
+#             self.logger.warning(f"Error during cleanup: {str(e)}")
+
+class ImprovedChromaDBVectorStore:
+    """Enhanced ChromaDB vector store with better duplicate handling"""
     
     def __init__(
         self,
@@ -1334,54 +1525,54 @@ class ChromaDBVectorStore:
         embedding_dim: int = 1024,
         persist_directory: str = None
     ):
-        try:
-            self.collection_name = collection_name
-            self.embedding_dim = embedding_dim
-            self.logger = logging.getLogger(__name__)
-            
-            # Use Streamlit's temp directory if no persist directory specified
-            if persist_directory is None:
-                persist_directory = os.path.join(tempfile.gettempdir(), "chromadb_data")
-            
-            # Ensure directory exists
-            os.makedirs(persist_directory, exist_ok=True)
-            
-            
-            # Initialize ChromaDB client with new configuration
-            self.client = chromadb.PersistentClient(
-                path=persist_directory,
-                settings=Settings(
-                    allow_reset=True,
-                    anonymized_telemetry=False
-                )
+        self.collection_name = collection_name
+        self.embedding_dim = embedding_dim
+        self.logger = logging.getLogger(__name__)
+        
+        # Use temp directory if no persist directory specified
+        if persist_directory is None:
+            persist_directory = os.path.join(tempfile.gettempdir(), "chromadb_data")
+        
+        # Ensure directory exists
+        os.makedirs(persist_directory, exist_ok=True)
+        
+        # Initialize ChromaDB client
+        self.client = chromadb.PersistentClient(
+            path=persist_directory,
+            settings=Settings(
+                allow_reset=True,
+                anonymized_telemetry=False
             )
-            
-            # Get or create collection
-            self.collection = self._create_collection()
-        except Exception as e:
-            self.logger.error(f"Failed to initialize ChromaDB: {str(e)}")
-            raise
+        )
+        
+        # Get or create collection
+        self.collection = self._create_collection()
+        
+        # Track existing IDs
+        self._existing_ids = set(self._get_existing_ids())
+
+    def _get_existing_ids(self):
+        """Get all existing document IDs in the collection"""
+        try:
+            # Get all IDs from collection
+            result = self.collection.get(include=['documents'])
+            return set(result['ids']) if result['ids'] else set()
+        except Exception:
+            return set()
 
     def _create_collection(self):
         """Create ChromaDB collection if it doesn't exist"""
         try:
-            # Delete collection if it exists
-            try:
-                return self.client.get_collection(
-                    name=self.collection_name,
-                    embedding_function=None
-                )
-            except Exception:
-                # If collection doesn't exist, create new one
-                return self.client.create_collection(
-                    name=self.collection_name,
-                    metadata={"hnsw:space": "cosine"},
-                    embedding_function=None
-                )
-            
-        except Exception as e:
-            self.logger.error(f"Failed to create collection: {str(e)}")
-            raise
+            return self.client.get_collection(
+                name=self.collection_name,
+                embedding_function=None
+            )
+        except Exception:
+            return self.client.create_collection(
+                name=self.collection_name,
+                metadata={"hnsw:space": "cosine"},
+                embedding_function=None
+            )
 
     def _sanitize_metadata_value(self, value: Any) -> Any:
         """Convert metadata values to ChromaDB-compatible types"""
@@ -1394,7 +1585,6 @@ class ChromaDBVectorStore:
         elif isinstance(value, dict):
             return str(value)
         elif hasattr(value, '__dict__'):
-            # Handle objects with __dict__ attribute
             return str(value.__dict__)
         else:
             return str(value)
@@ -1402,13 +1592,10 @@ class ChromaDBVectorStore:
     def _convert_metadata_to_dict(self, metadata: Any) -> Dict:
         """Convert metadata to ChromaDB-compatible dictionary format"""
         try:
-            # If metadata is already a dict, use it as base
             if isinstance(metadata, dict):
                 base_dict = metadata
-            # If metadata has __dict__, use that
             elif hasattr(metadata, '__dict__'):
                 base_dict = metadata.__dict__
-            # If metadata is a ChunkMetadata object, extract its attributes
             elif isinstance(metadata, ChunkMetadata):
                 base_dict = {
                     'source': metadata.source,
@@ -1424,7 +1611,6 @@ class ChromaDBVectorStore:
             else:
                 base_dict = {"value": str(metadata)}
 
-            # Sanitize all values in the dictionary
             return {
                 k: self._sanitize_metadata_value(v)
                 for k, v in base_dict.items()
@@ -1441,32 +1627,44 @@ class ChromaDBVectorStore:
         metadata: List[Any],
         batch_size: int = 100
     ):
-        """Insert documents into ChromaDB"""
+        """Insert documents into ChromaDB with duplicate handling"""
         try:
+            total_inserted = 0
+            total_skipped = 0
+            
             # Process in batches
             for i in range(0, len(texts), batch_size):
                 end_idx = min(i + batch_size, len(texts))
                 batch_texts = texts[i:end_idx]
                 batch_embeddings = embeddings[i:end_idx]
+                batch_metadata = metadata[i:end_idx]
                 
-                # Convert and sanitize metadata
-                batch_metadata = [
-                    self._convert_metadata_to_dict(meta) 
-                    for meta in metadata[i:end_idx]
-                ]
+                # Generate IDs and filter existing ones
+                batch_data = []
+                for j in range(len(batch_texts)):
+                    doc_id = f"doc_{i+j}"
+                    if doc_id not in self._existing_ids:
+                        batch_data.append({
+                            'id': doc_id,
+                            'text': batch_texts[j],
+                            'embedding': batch_embeddings[j],
+                            'metadata': self._convert_metadata_to_dict(batch_metadata[j])
+                        })
+                        self._existing_ids.add(doc_id)
+                        total_inserted += 1
+                    else:
+                        total_skipped += 1
                 
-                # Generate IDs for the batch
-                batch_ids = [f"doc_{j}" for j in range(i, end_idx)]
-                
-                # Add embeddings to collection
-                self.collection.add(
-                    embeddings=batch_embeddings.tolist(),
-                    documents=batch_texts,
-                    metadatas=batch_metadata,
-                    ids=batch_ids
-                )
+                if batch_data:
+                    # Add new documents to collection
+                    self.collection.add(
+                        embeddings=[d['embedding'].tolist() for d in batch_data],
+                        documents=[d['text'] for d in batch_data],
+                        metadatas=[d['metadata'] for d in batch_data],
+                        ids=[d['id'] for d in batch_data]
+                    )
             
-            self.logger.info(f"Successfully inserted {len(texts)} documents")
+            self.logger.info(f"Insertion complete: {total_inserted} documents inserted, {total_skipped} duplicates skipped")
             
         except Exception as e:
             self.logger.error(f"Insert operation failed: {str(e)}")
@@ -1480,19 +1678,17 @@ class ChromaDBVectorStore:
     ) -> List[Dict]:
         """Perform hybrid search using both vector similarity and text matching"""
         try:
-            # Query collection
             results = self.collection.query(
                 query_embeddings=query_embedding.reshape(1, -1).tolist(),
                 n_results=limit,
                 include=["documents", "metadatas", "distances"]
             )
             
-            # Format results
             formatted_results = []
             if results['ids'] and len(results['ids'][0]) > 0:
                 for i in range(len(results['ids'][0])):
                     doc_id = results['ids'][0][i]
-                    score = 1 - float(results['distances'][0][i])  # Convert distance to similarity score
+                    score = 1 - float(results['distances'][0][i])
                     
                     formatted_results.append({
                         "id": doc_id,
@@ -1509,14 +1705,7 @@ class ChromaDBVectorStore:
 
     def __del__(self):
         """Cleanup resources"""
-        try:
-            if hasattr(self, 'client'):
-                # ChromaDB PersistentClient doesn't need explicit closing
-                pass
-        except Exception as e:
-            self.logger.warning(f"Error during cleanup: {str(e)}")
-
-
+        pass
 
 
 
@@ -3349,11 +3538,20 @@ class RAGPipeline:
                 # Initialize vector store
                 st.write("Initializing vector store...")
                 self.logger.info("Setting up vector store...")
-                self.vector_store = ChromaDBVectorStore(
+
+                # self.vector_store = ChromaDBVectorStore(
+                #     collection_name=collection_name,
+                #     embedding_dim=self.embedding_model.dimension,
+                #     persist_directory=f"{cache_dir}/vector_store"
+                # )
+# cache dublicates ?...
+                self.vector_store = ImprovedChromaDBVectorStore(
                     collection_name=collection_name,
                     embedding_dim=self.embedding_model.dimension,
                     persist_directory=f"{cache_dir}/vector_store"
                 )
+# 
+
                 log_memory_usage("After vector store init")
                 self.logger.info("Vector store initialized")
                 st.write("Vector store initialized successfully")
